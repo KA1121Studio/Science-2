@@ -2,7 +2,10 @@ import fetch from "node-fetch"
 
 export default async function handler(req, res) {
   try {
-
+    const raw = req.query.url?.join("/")
+    if (!raw) {
+      return res.status(400).send("Use proxy only")
+    }
 
     const targetUrl = decodeURIComponent(raw)
     const urlObj = new URL(targetUrl)
