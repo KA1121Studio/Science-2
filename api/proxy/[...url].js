@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       const location = response.headers.get("location")
       if (location) {
         const absolute = new URL(location, targetUrl).href
-        return res.redirect("/proxy/" + encodeURIComponent(absolute))
+        return res.redirect("/api" + encodeURIComponent(absolute))
       }
     }
 
@@ -67,13 +67,13 @@ export default async function handler(req, res) {
     // =========================
     if (contentType.includes("text/html")) {
 
-      const base = `/proxy/${encodeURIComponent(targetUrl)}`
+      const base = `/api${encodeURIComponent(targetUrl)}`
       body = body.replace("<head>", `<head><base href="${base}">`)
 
       const inject = `
 <script>
 (function(){
-const proxy = (url) => "/proxy/" + encodeURIComponent(url);
+const proxy = (url) => "/api" + encodeURIComponent(url);
 
 const originalFetch = window.fetch;
 window.fetch = function(input, init){
@@ -156,7 +156,7 @@ window.WebSocket = function(url, protocols){
         try {
           if (link.startsWith("data:") || link.startsWith("javascript:")) return m
           const absolute = new URL(link, targetUrl).href
-          return attr + '="/proxy/' + encodeURIComponent(absolute) + '"'
+          return attr + '="/api' + encodeURIComponent(absolute) + '"'
         } catch {
           return m
         }
