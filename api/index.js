@@ -1,12 +1,51 @@
-import fetch from "node-fetch"
+import express from "express";
+import fetch from "node-fetch";
+import { fileURLToPath } from "url";
+import path from "path";
+import { execSync } from "child_process";   
 
-export default async function handler(req, res) {
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+
+// ====================== グローバル変数 ======================
+let totalAccesses = 0;
+let todayAccesses = 0;
+let todayDate = new Date().toISOString().split('T')[0];
+let activeUsers = new Map();
+const ONLINE_TIMEOUT = 5 * 60 * 1000;
+
+
+// ====================== ルート ======================
+app.get("/", async (req, res) => {
+  totalAccesses++;
+  todayAccesses++;
+  updateTodayCount();
+  await incrementAccesses(); // ← await 必須
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+
+ 
+
+
+
+app.all("/proxy/*", async (req, res) => {
   try {
-    const raw = req.query.url?.join("/")
-    if (!raw) {
-      return res.status(400).send("Use proxy only")
-    }
-
+    const raw = req.params[0]
     const targetUrl = decodeURIComponent(raw)
     const urlObj = new URL(targetUrl)
 
@@ -27,28 +66,24 @@ export default async function handler(req, res) {
       redirect: "manual"
     })
 
-    // =========================
-    // リダイレクト対応
-    // =========================
+    //  リダイレクト対応
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location")
       if (location) {
         const absolute = new URL(location, targetUrl).href
-        return res.redirect("/api" + encodeURIComponent(absolute))
+        return res.redirect("/proxy/" + encodeURIComponent(absolute))
       }
     }
 
     const contentType = response.headers.get("content-type") || ""
 
-    // cookie返却
+    //  cookie返却
     const setCookie = response.headers.raw()["set-cookie"]
     if (setCookie) {
       res.setHeader("set-cookie", setCookie)
     }
 
-    // =========================
-    // バイナリ判定
-    // =========================
+    //  バイナリ対応
     const isText =
       contentType.includes("text") ||
       contentType.includes("javascript") ||
@@ -63,24 +98,27 @@ export default async function handler(req, res) {
     let body = await response.text()
 
     // =========================
-    // HTML処理（そのまま移植）
+    // HTML処理
     // =========================
     if (contentType.includes("text/html")) {
-
-      const base = `/api${encodeURIComponent(targetUrl)}`
+      const base = `/proxy/${encodeURIComponent(targetUrl)}`
       body = body.replace("<head>", `<head><base href="${base}">`)
 
       const inject = `
 <script>
 (function(){
-const proxy = (url) => "/api" + encodeURIComponent(url);
+const proxy = (url) => "/proxy/" + encodeURIComponent(url);
 
+// =================
+// fetch
+// =================
 const originalFetch = window.fetch;
 window.fetch = function(input, init){
   try{
     let url = typeof input === "object" ? input.url : input;
     const absolute = new URL(url, location.href).href;
     const proxied = proxy(absolute);
+
     if(typeof input === "object"){
       input = new Request(proxied, input);
     } else {
@@ -90,6 +128,9 @@ window.fetch = function(input, init){
   return originalFetch(input, init);
 };
 
+// =================
+// XHR
+// =================
 const open = XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open = function(method, url){
   try{
@@ -99,6 +140,9 @@ XMLHttpRequest.prototype.open = function(method, url){
   return open.call(this, method, url);
 };
 
+// =================
+// location制御
+// =================
 const assign = window.location.assign;
 window.location.assign = function(url){
   try{
@@ -117,26 +161,38 @@ window.location.replace = function(url){
   return replace.call(this, url);
 };
 
+// =================
+// aタグ強制
+// =================
 document.addEventListener("click", function(e){
   const a = e.target.closest("a");
   if(!a) return;
+
   const href = a.getAttribute("href");
   if(!href || href.startsWith("javascript:")) return;
+
   try{
     const absolute = new URL(href, location.href).href;
     a.href = proxy(absolute);
   }catch(e){}
 });
 
+// =================
+// form強制
+// =================
 document.addEventListener("submit", function(e){
   const form = e.target;
   if(!form.action) return;
+
   try{
     const absolute = new URL(form.action, location.href).href;
     form.action = proxy(absolute);
   }catch(e){}
 });
 
+// =================
+// WebSocket
+// =================
 const WS = window.WebSocket;
 window.WebSocket = function(url, protocols){
   try{
@@ -152,30 +208,39 @@ window.WebSocket = function(url, protocols){
 
       body = body.replace("</head>", inject + "</head>")
 
+      //  リンク書き換え
       body = body.replace(/(src|href)=["'](.*?)["']/gi, (m, attr, link) => {
         try {
           if (link.startsWith("data:") || link.startsWith("javascript:")) return m
           const absolute = new URL(link, targetUrl).href
-          return attr + '="/api' + encodeURIComponent(absolute) + '"'
+          return attr + '="/proxy/' + encodeURIComponent(absolute) + '"'
         } catch {
           return m
         }
       })
 
+      // iframe制限
       body = body.replace(/<iframe/gi, '<iframe sandbox="allow-scripts allow-forms"')
     }
 
-    // CSP調整
+    // CSP解除＆再設定
+    res.removeHeader("content-security-policy")
+    res.removeHeader("x-frame-options")
+
     res.setHeader(
       "content-security-policy",
       "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'"
     )
 
     res.setHeader("content-type", contentType)
-    res.status(response.status).send(body)
+    res.send(body)
 
   } catch (e) {
     console.error(e)
     res.status(500).send("proxy error")
   }
-}
+})
+
+
+// api/index.js の最後
+export default app;
