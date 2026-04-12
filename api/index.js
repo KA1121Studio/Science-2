@@ -12,6 +12,8 @@ const supabase = createClient(
 );
 
 
+app.use(express.static(path.join(__dirname, "../public")));
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,8 +36,8 @@ app.get("/", async (req, res) => {
   totalAccesses++;
   todayAccesses++;
   updateTodayCount();
-  await incrementAccesses(); // ← await 必須
-  res.sendFile(path.join(__dirname, "index.html"));
+  await incrementAccesses();
+  res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
 
