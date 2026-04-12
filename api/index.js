@@ -43,7 +43,7 @@ app.get("/", async (req, res) => {
 
 
 
-app.all("/proxy/*", async (req, res) => {
+app.all("/api/proxy/*", async (req, res) => {
   try {
     const raw = req.params[0]
     const targetUrl = decodeURIComponent(raw)
@@ -71,7 +71,7 @@ app.all("/proxy/*", async (req, res) => {
       const location = response.headers.get("location")
       if (location) {
         const absolute = new URL(location, targetUrl).href
-        return res.redirect("/proxy/" + encodeURIComponent(absolute))
+        return res.redirect("/api/proxy/" + encodeURIComponent(absolute))
       }
     }
 
@@ -101,13 +101,13 @@ app.all("/proxy/*", async (req, res) => {
     // HTML処理
     // =========================
     if (contentType.includes("text/html")) {
-      const base = `/proxy/${encodeURIComponent(targetUrl)}`
+      const base = `/api/proxy/${encodeURIComponent(targetUrl)}`
       body = body.replace("<head>", `<head><base href="${base}">`)
 
       const inject = `
 <script>
 (function(){
-const proxy = (url) => "/proxy/" + encodeURIComponent(url);
+const proxy = (url) => "/api/proxy/" + encodeURIComponent(url);
 
 // =================
 // fetch
@@ -213,7 +213,7 @@ window.WebSocket = function(url, protocols){
         try {
           if (link.startsWith("data:") || link.startsWith("javascript:")) return m
           const absolute = new URL(link, targetUrl).href
-          return attr + '="/proxy/' + encodeURIComponent(absolute) + '"'
+          return attr + '="/api/proxy/' + encodeURIComponent(absolute) + '"'
         } catch {
           return m
         }
