@@ -21,7 +21,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 
-app.use(express.static(path.join(__dirname, "../public")));
+
 
 
 // ====================== グローバル変数 ======================
@@ -31,15 +31,6 @@ let todayDate = new Date().toISOString().split('T')[0];
 let activeUsers = new Map();
 const ONLINE_TIMEOUT = 5 * 60 * 1000;
 
-
-// ====================== ルート ======================
-app.get("/", async (req, res) => {
-  totalAccesses++;
-  todayAccesses++;
-  updateTodayCount();
-  await incrementAccesses();
-  res.sendFile(path.join(__dirname, "../public/index.html"));
-});
 
 
  
